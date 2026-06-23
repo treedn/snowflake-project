@@ -1,18 +1,32 @@
 {{
   config(
-    materialized='view'
+    materialized='table',
+    partition_by={'field': 'event_date', 'data_type': 'date'},
+    cluster_by=['event_name', 'user_pseudo_id']
   )
 }}
 
--- Unified events view: finalized history + today's intraday.
+-- Unified events table: finalized history + today's intraday, plus
+-- forward-filled level_id and the user's previous/next distinct level.
 --
--- This is the table downstream models and analyses should query.
--- It's a view -- no storage cost, always reflects the latest data
--- from both stg_events_daily and stg_events_intraday.
+-- Materialized as a table (not a view) so window functions over each
+-- user's full event history run once per dbt run instead of per query.
+-- At ~10K events/day, full-refresh is cheap.
 --
--- Explicit column list (not SELECT *): dbt Fusion resolves SELECT * from refs
--- using per-source BigQuery schemas; daily vs intraday shards can differ in width
--- even though both models project the same fields — UNION ALL then fails dbt0301.
+-- Column semantics:
+--   level_id          : forward-filled per user (last non-null level_id at or
+--                       before this row). Stays NULL until the user's first
+--                       level event; subsequent rows carry the current level
+--                       until the next level_id change.
+--   previous_level_id : the user's previous *distinct* level before the
+--                       current one. NULL on the user's first level run.
+--   next_level_id     : the user's next *distinct* level after the current
+--                       one. NULL on the user's final level run.
+--
+-- Explicit column list (not SELECT *) on the UNION ALL: dbt Fusion resolves
+-- SELECT * from refs using per-source BigQuery schemas; daily vs intraday
+-- shards can differ in width even though both models project the same
+-- fields — UNION ALL then fails dbt0301.
 
 {% set event_cols %}
   event_date,
@@ -102,12 +116,71 @@
   user_id
 {% endset %}
 
-SELECT
-{{ event_cols }}
-FROM {{ ref('stg_events_daily') }}
+WITH unioned AS (
+  SELECT {{ event_cols }} FROM {{ ref('stg_events_daily') }}
+  UNION ALL
+  SELECT {{ event_cols }} FROM {{ ref('stg_events_intraday') }}
+),
 
-UNION ALL
+filled AS (
+  -- Forward-fill level_id per user. Overwrites the original column;
+  -- rows that arrive before the user's first level event remain NULL.
+  SELECT
+    * EXCEPT (level_id),
+    LAST_VALUE(level_id IGNORE NULLS) OVER (
+      PARTITION BY user_pseudo_id
+      ORDER BY event_timestamp
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS level_id
+  FROM unioned
+),
+
+runs_marked AS (
+  -- Flag rows where level_id changes (start of a new run).
+  -- Split out from the cumulative sum below because BigQuery does not
+  -- allow nesting analytic functions inside another analytic function.
+  SELECT
+    *,
+    CASE
+      WHEN level_id IS DISTINCT FROM LAG(level_id) OVER (
+        PARTITION BY user_pseudo_id ORDER BY event_timestamp
+      ) THEN 1
+      ELSE 0
+    END AS is_run_start
+  FROM filled
+),
+
+runs AS (
+  -- Number each consecutive run of identical level_id per user.
+  SELECT
+    * EXCEPT (is_run_start),
+    SUM(is_run_start) OVER (
+      PARTITION BY user_pseudo_id
+      ORDER BY event_timestamp
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS level_run_id
+  FROM runs_marked
+),
+
+run_levels AS (
+  -- One row per (user, level run) carrying that run's level_id.
+  SELECT DISTINCT user_pseudo_id, level_run_id, level_id
+  FROM runs
+),
+
+run_neighbors AS (
+  -- Previous/next distinct level for each run.
+  SELECT
+    user_pseudo_id,
+    level_run_id,
+    LAG(level_id) OVER (PARTITION BY user_pseudo_id ORDER BY level_run_id) AS previous_level_id,
+    LEAD(level_id) OVER (PARTITION BY user_pseudo_id ORDER BY level_run_id) AS next_level_id
+  FROM run_levels
+)
 
 SELECT
-{{ event_cols }}
-FROM {{ ref('stg_events_intraday') }}
+  r.* EXCEPT (level_run_id),
+  n.previous_level_id,
+  n.next_level_id
+FROM runs r
+JOIN run_neighbors n USING (user_pseudo_id, level_run_id)

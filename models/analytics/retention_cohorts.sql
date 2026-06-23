@@ -38,7 +38,7 @@ user_activity as (
   where user_pseudo_id is not null
 ),
 
-user_spend_status as (
+user_iap_value as (
   select
     user_pseudo_id,
     case
@@ -51,97 +51,90 @@ user_spend_status as (
         end
       ) = 1 then 'spender'
       else 'non_spender'
-    end as spender_segment
+    end as spender_segment,
+    sum(coalesce(event_value_in_usd, amount, price_dollars, 0)) as total_iap_value_usd
   from {{ ref('stg_events') }}
   where user_pseudo_id is not null
   group by 1
 ),
 
-retention_base as (
+cohort_enriched_users as (
   select
     cu.cohort_date,
     cu.geo_country,
     cu.acquisition_source,
     cu.app_version,
-    uss.spender_segment,
+    coalesce(uiv.spender_segment, 'non_spender') as spender_segment,
     cu.user_pseudo_id,
-    date_diff(ua.event_date, cu.cohort_date, day) as day_offset
+    coalesce(uiv.total_iap_value_usd, 0) as total_iap_value_usd
   from cohort_users cu
-  left join user_spend_status uss
-    on uss.user_pseudo_id = cu.user_pseudo_id
-  join user_activity ua
-    on ua.user_pseudo_id = cu.user_pseudo_id
-  where ua.event_date >= cu.cohort_date
-    and ua.event_date <= date_add(cu.cohort_date, interval 30 day)
+  left join user_iap_value uiv
+    on uiv.user_pseudo_id = cu.user_pseudo_id
 ),
 
-user_iap_value as (
+retention_base as (
   select
-    cu.user_pseudo_id,
-    sum(
-      case
-        when e.event_name in ('iap_purchase', 'in_app_purchase')
-          then coalesce(e.event_value_in_usd, e.amount, e.price_dollars, 0)
-        else 0
-      end
-    ) as iap_value_usd
-  from cohort_users cu
-  join {{ ref('stg_events') }} e
-    on e.user_pseudo_id = cu.user_pseudo_id
-  where e.event_date >= cu.cohort_date
-    and e.event_date <= date_add(cu.cohort_date, interval 30 day)
-  group by 1
+    ceu.cohort_date,
+    ceu.geo_country,
+    ceu.acquisition_source,
+    ceu.app_version,
+    ceu.spender_segment,
+    ceu.user_pseudo_id,
+    date_diff(ua.event_date, ceu.cohort_date, day) as day_offset
+  from cohort_enriched_users ceu
+  join user_activity ua
+    on ua.user_pseudo_id = ceu.user_pseudo_id
+  where ua.event_date >= ceu.cohort_date
+    and ua.event_date <= date_add(ceu.cohort_date, interval 30 day)
 ),
 
-user_retention as (
+retention_metrics as (
   select
     cohort_date,
     geo_country,
     acquisition_source,
     app_version,
-    coalesce(spender_segment, 'non_spender') as spender_segment,
-    user_pseudo_id,
-    max(if(day_offset = 1, 1, 0)) as retained_d1_flag,
-    max(if(day_offset = 3, 1, 0)) as retained_d3_flag,
-    max(if(day_offset = 7, 1, 0)) as retained_d7_flag,
-    max(if(day_offset = 14, 1, 0)) as retained_d14_flag,
-    max(if(day_offset = 30, 1, 0)) as retained_d30_flag
+    spender_segment,
+    count(distinct if(day_offset = 1, user_pseudo_id, null)) as retained_d1_users,
+    count(distinct if(day_offset = 3, user_pseudo_id, null)) as retained_d3_users,
+    count(distinct if(day_offset = 7, user_pseudo_id, null)) as retained_d7_users,
+    count(distinct if(day_offset = 14, user_pseudo_id, null)) as retained_d14_users,
+    count(distinct if(day_offset = 30, user_pseudo_id, null)) as retained_d30_users
   from retention_base
-  group by 1, 2, 3, 4, 5, 6
+  group by 1, 2, 3, 4, 5
 ),
 
-cohort_metrics as (
+cohort_user_metrics as (
   select
-    ur.cohort_date,
-    ur.geo_country,
-    ur.acquisition_source,
-    ur.app_version,
-    ur.spender_segment,
-    count(*) as cohort_size,
-    sum(ur.retained_d1_flag) as retained_d1_users,
-    sum(ur.retained_d3_flag) as retained_d3_users,
-    sum(ur.retained_d7_flag) as retained_d7_users,
-    sum(ur.retained_d14_flag) as retained_d14_users,
-    sum(ur.retained_d30_flag) as retained_d30_users,
-    sum(coalesce(uiv.iap_value_usd, 0)) as total_iap_value_usd
-  from user_retention ur
-  left join user_iap_value uiv
-    on uiv.user_pseudo_id = ur.user_pseudo_id
+    cohort_date,
+    geo_country,
+    acquisition_source,
+    app_version,
+    spender_segment,
+    count(distinct user_pseudo_id) as cohort_size,
+    sum(total_iap_value_usd) as total_iap_value_usd
+  from cohort_enriched_users
   group by 1, 2, 3, 4, 5
 )
 
 select
-  cohort_date,
-  geo_country,
-  acquisition_source,
-  app_version,
-  spender_segment,
-  cohort_size,
-  retained_d1_users,
-  retained_d3_users,
-  retained_d7_users,
-  retained_d14_users,
-  retained_d30_users,
-  total_iap_value_usd
-from cohort_metrics
+  cum.cohort_date,
+  cum.geo_country,
+  cum.acquisition_source,
+  cum.app_version,
+  cum.spender_segment,
+  cum.cohort_size,
+  cum.total_iap_value_usd,
+  rm.retained_d1_users,
+  rm.retained_d3_users,
+  rm.retained_d7_users,
+  rm.retained_d14_users,
+  rm.retained_d30_users
+from cohort_user_metrics cum
+left join retention_metrics rm
+  on rm.cohort_date = cum.cohort_date
+ and rm.geo_country = cum.geo_country
+ and rm.acquisition_source = cum.acquisition_source
+ and rm.app_version = cum.app_version
+ and rm.spender_segment = cum.spender_segment
 order by cohort_date desc, geo_country, acquisition_source, app_version, spender_segment

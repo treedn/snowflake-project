@@ -1,0 +1,8 @@
+version: 2
+
+models:
+  - name: stg_events_intraday
+    description: >
+      Today's denormalized intraday events from Firebase events_intraday_*.
+      Materialized as a table -- always rebuilt with today's full snapshot.
+      Recommended schedule: every 15 minutes.

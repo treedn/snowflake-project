@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: meta_ads
+    database: chef-master-8f916
+    schema: raw
+    description: Meta Marketing API insights ingested by zero1-data pipeline.
+    tables:
+      - name: meta_ads_campaign_daily
+        description: Daily insights at campaign grain (no breakdowns).
+      - name: meta_ads_ad_daily
+        description: Daily insights at ad grain with full action arrays.
+      - name: meta_ads_ad_daily_country
+        description: Ad × country breakdown.
+      - name: meta_ads_ad_daily_age_gender
+        description: Ad × age × gender breakdown.
+      - name: meta_ads_ad_daily_placement
+        description: Ad × publisher × position × device breakdown.
+      - name: meta_ads_ad_daily_actions
+        description: Ad with action_breakdowns by action_type/destination/device.

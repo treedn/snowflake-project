@@ -16,7 +16,7 @@ players_event as (
     iap_players.user_pseudo_id,
     events.event_date,
     events.event_timestamp,
-    item_name AS product_name,
+    product_id,
     price_dollars,
     case when events.event_timestamp = iap_players.event_timestamp then 1 else 0 end as is_purchase, 
     iap_players.iap_index,

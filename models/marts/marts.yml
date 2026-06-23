@@ -1,0 +1,150 @@
+version: 2
+
+models:
+  - name: ua_performance_daily
+    description: >
+      Daily UA performance from Adjust at (date, app, platform, country, network, campaign,
+      campaign_id). Adjust ingests Meta cost natively, so this is the single source of truth
+      for paid spend joined to attributed installs/revenue/ROAS. Also exposes the IAP vs ad
+      revenue split: `revenue` (= IAP), `ad_revenue`, `all_revenue` (sum), with `arpdau`
+      (IAP), `arpdau_ad`, `arpdau_all` rates and `iap_share` / `ad_share` of total revenue.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: app
+        tests: [not_null]
+      - name: spend
+      - name: installs
+      - name: roas
+      - name: arpdau
+      - name: arpdau_ad
+      - name: arpdau_all
+
+  - name: engagement_daily
+    description: >
+      Player engagement from Unity Analytics at (date, country, platform), rolled up from
+      clientVersion. Retention/session rates are DAU-weighted. DAU/payers are upper bounds
+      because Unity returns one row per breakdown — re-pull without clientVersion to get
+      exact totals.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: country
+      - name: platform
+
+  - name: creative_performance_daily
+    description: >
+      Creative-level Meta ad performance: ad-grain spend, video metrics, attributed installs
+      and purchases. Use ua_performance_daily for network-level paid spend totals.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: ad_id
+
+  - name: ua_funnel_daily
+    description: >
+      Acquisition funnel from Adjust: impressions → clicks → installs → revenue events →
+      first purchase, plus stage-to-stage rates. In-game progression funnels are not
+      derivable from these sources.
+    columns:
+      - name: date
+        tests: [not_null]
+
+  - name: iap_arpdau_daily
+    description: >
+      Daily IAP revenue + ARPDAU at (date, geo_country, app_version, spender_segment),
+      from Firebase events. Complements ua_performance_daily (Adjust, IAP + ad split,
+      geo + network grain) by owning the dims Adjust can't supply: app_version and
+      spender_segment. IAP value sums event_value_in_usd / price_dollars on
+      iap_purchase / in_app_purchase events only — the `amount` event param is
+      intentionally excluded (carries non-IAP coin amounts). Ad revenue is NOT in
+      this mart (Firebase ad events have no $ value); for ads use ua_performance_daily.
+      Incremental: rebuilds last 14 days each run.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: geo_country
+      - name: app_version
+      - name: spender_segment
+      - name: dau
+
+  - name: cohort_ltv_daily
+    description: >
+      Daily IAP cohort LTV components at (cohort_date, days_since_install,
+      geo_country, app_version), from Firebase events. Stores summable numerators
+      (iap_revenue, iap_transactions, paying_users) and the denominator
+      (cohort_size) so consumers recompute the LTV curve correctly:
+      cumulative_ltv(N) = SUM(iap_revenue WHERE days_since_install <= N)
+      / cohort_size. geo_country and app_version are frozen at install time.
+      IAP value uses the same definition as iap_arpdau_daily — sum of
+      event_value_in_usd / price_dollars on iap_purchase / in_app_purchase
+      events; the generic `amount` param is excluded. Ad revenue is NOT in this
+      mart (Firebase ad events have no $ value). Curve horizon:
+      days_since_install in [0, 30]. Each (cohort_date, dsi) row is only emitted
+      once the calendar day cohort_date + dsi has fully elapsed.
+      Incremental: rebuilds cohort_date partitions in the last 44 days
+      (max_dsi + 14d event-arrival buffer).
+    columns:
+      - name: cohort_date
+        tests: [not_null]
+      - name: days_since_install
+        tests: [not_null]
+      - name: geo_country
+      - name: app_version
+      - name: cohort_size
+      - name: iap_revenue
+      - name: iap_transactions
+      - name: paying_users
+
+  - name: session_depth_daily
+    description: >
+      Daily session-depth distribution at (date, platform, app_version, geo_country),
+      from Firebase events. One row per cell with avg + p25/p50/p75/p90/p99
+      summaries for: events_per_session (excluding user_engagement /
+      screen_change / screen_view noise), duration_seconds (max - min
+      event_timestamp, computed over ALL events including noise),
+      levels_per_session (distinct level_id on level_started), and
+      sessions_per_user (distinct ga_session_id per user-day cell). Sessions
+      are keyed on (user_pseudo_id, ga_session_id) and attributed to the date
+      of their first event. Croatia excluded; incremental window 14 days.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: platform
+      - name: app_version
+      - name: geo_country
+      - name: sessions
+      - name: user_days
+
+  - name: tutorial_funnel_daily
+    description: >
+      Daily tutorial funnel at (date, app_version, geo_country, platform,
+      tutorial_id, step_num), from Firebase events. Long format: one row per
+      cell, with step_num = 1..N for `tutorial_step` events and step_num =
+      NULL for `tutorial_completed`. Measures are `users` (distinct
+      user_pseudo_id per cell) and `events` (raw event count). Use to
+      compute per-tutorial completion rate (users at step_num IS NULL /
+      users at step_num = 1) and drop-off curves (users by step_num within
+      a tutorial_id). `users` is exact within a cell; summing across cells
+      double-counts users who span cells (same caveat as engagement_daily.dau).
+      Croatia excluded; incremental window 14 days.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: app_version
+      - name: geo_country
+      - name: platform
+      - name: tutorial_id
+        tests: [not_null]
+      - name: step_num
+      - name: users
+      - name: events
+
+  - name: overview_daily
+    description: >
+      Dashboard-friendly view joining ua_performance_daily and engagement_daily on
+      (date, app, platform, country). Engagement does not carry network/campaign — query
+      ua_performance_daily directly when those splits are needed.
+    columns:
+      - name: date
+        tests: [not_null]

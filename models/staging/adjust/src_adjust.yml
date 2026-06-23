@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: adjust
+    database: chef-master-8f916
+    schema: raw
+    description: Adjust attribution + cohort metrics ingested by zero1-data pipeline.
+    tables:
+      - name: adjust_report
+        description: Daily parquet_report from Adjust at network × campaign × adgroup × creative × country × os grain.

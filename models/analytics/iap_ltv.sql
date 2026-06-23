@@ -8,7 +8,7 @@ with events as (
     event_timestamp,
     level_id,
     event_name,
-    item_name,
+    product_id,
     price_dollars as event_value_in_usd
   from {{ ref('stg_events') }}
   where 1=1
@@ -24,7 +24,7 @@ iap_level as (
     user_pseudo_id,
     ga_session_id,
     event_timestamp,
-    item_name,
+    product_id,
     level_id,
     event_date,
     last_value(level_id ignore nulls) over (
@@ -46,7 +46,7 @@ iap_level as (
 select
   app_version,
   geo_country,
-  item_name,
+  product_id,
   event_date,
   coalesce(previous_level_id,next_level_id) as level_id,
   sum(event_value_in_usd) as level_ltv

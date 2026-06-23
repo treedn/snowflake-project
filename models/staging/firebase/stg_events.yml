@@ -1,0 +1,59 @@
+version: 2
+
+models:
+  - name: stg_events
+    description: >
+      Unified view over stg_events_daily + stg_events_intraday. This is the
+      table downstream models and analyses should query. See STG_EVENTS.md
+      for full schema and example queries.
+    columns:
+      - name: event_date
+        tests: [not_null]
+      - name: event_timestamp
+        tests: [not_null]
+      - name: event_name
+        tests: [not_null]
+      - name: user_first_touch_timestamp
+        tests: [not_null]
+      - name: device_category
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['mobile', 'tablet']
+      - name: device_operating_system
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Android', 'iOS']
+      - name: app_version
+        tests: [not_null]
+      - name: platform
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['ANDROID', 'IOS']
+      - name: amount
+        tests:
+          - not_null:
+              config:
+                where: "event_name IN ('currency_spent', 'currency_earned')"
+      - name: currency_type
+        tests:
+          - not_null:
+              config:
+                where: "event_name IN ('currency_spent', 'currency_earned')"
+          - accepted_values:
+              arguments:
+                values: ['Gems', 'Coins']
+              config:
+                where: "event_name IN ('currency_spent', 'currency_earned')"
+      - name: price
+        tests:
+          - not_null:
+              config:
+                where: "event_name = 'in_app_purchase'"
+      - name: price_gems
+        tests:
+          - not_null:
+              config:
+                where: "event_name = 'iap_purchase'"

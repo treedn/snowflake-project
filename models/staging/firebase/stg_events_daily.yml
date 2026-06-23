@@ -1,0 +1,9 @@
+version: 2
+
+models:
+  - name: stg_events_daily
+    description: >
+      Finalized denormalized events from Firebase events_* shards.
+      Incremental model with insert_overwrite: replaces yesterday's partition
+      on each run; --full-refresh backfills all history.
+      Recommended schedule: daily after 06:00 UTC.

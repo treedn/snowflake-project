@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: unity
+    database: chef-master-8f916
+    schema: raw
+    description: Unity Analytics + Unity Ads data ingested by zero1-data pipeline.
+    tables:
+      - name: unity_analytics_daily
+        description: Unity Data Gateway analytics at day × country × platform × clientVersion grain.
+      - name: unity_skan
+        description: Unity Ads SKAN campaign metrics (iOS).
