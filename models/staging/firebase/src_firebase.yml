@@ -1,0 +1,58 @@
+version: 2
+
+sources:
+  - name: firebase_analytics
+    database: chef-master-8f916
+    schema: analytics_448269098
+    tables:
+      # Identifiers must not contain '*' — Windows cannot use '*' in filesystem paths,
+      # and dbt Fusion/LSP caches sourced_remote schemas under target/.lsp.
+      # Wildcard table names (events_*, events_intraday_*) are built in model SQL instead.
+      # Identifiers are real shards for schema download only (see ga4_*_schema_proxy_suffix in dbt_project.yml).
+      - name: events_wildcard
+        identifier: "{{ 'events_' ~ var('ga4_daily_schema_proxy_suffix') }}"
+        description: >
+          Finalized event data exported from Firebase Analytics to BigQuery.
+          Date-sharded table; queries must use the wildcard suffix and
+          filter by _TABLE_SUFFIX.
+
+      - name: events_intraday_wildcard
+        identifier: "{{ 'events_intraday_' ~ var('ga4_intraday_schema_proxy_suffix') }}"
+        description: >
+          Today's streaming events exported from Firebase Analytics to BigQuery.
+          Updated continuously throughout the day. Tomorrow this data will be
+          replaced by the finalized version in events_YYYYMMDD.
+
+models:
+  - name: stg_events_daily
+    description: >
+      Finalized denormalized events from Firebase events_* shards.
+      Incremental model with insert_overwrite: replaces yesterday's partition
+      on each run; --full-refresh backfills all history.
+      Recommended schedule: daily after 06:00 UTC.
+    columns:
+      - name: event_date
+        tests: [not_null]
+      - name: event_timestamp
+        tests: [not_null]
+      - name: event_name
+        tests: [not_null]
+
+  - name: stg_events_intraday
+    description: >
+      Today's denormalized intraday events from Firebase events_intraday_*.
+      Materialized as a table -- always rebuilt with today's full snapshot.
+      Recommended schedule: every 15 minutes.
+    columns:
+      - name: event_date
+        tests: [not_null]
+      - name: event_timestamp
+        tests: [not_null]
+      - name: event_name
+        tests: [not_null]
+
+  - name: stg_events
+    description: >
+      Unified view over stg_events_daily + stg_events_intraday. This is the
+      table downstream models and analyses should query. See STG_EVENTS.md
+      for full schema and example queries.

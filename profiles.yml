@@ -1,0 +1,13 @@
+default:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      keyfile: C:\Users\P16s G3\Downloads\jobs\Upwork\Zero1\keys\chef-master-8f916-4809e0dd1003.json
+      project: chef-master-8f916
+      dataset: dbt_tri
+      location: EU
+      threads: 16
+      priority: interactive
+      dataproc_batch: null

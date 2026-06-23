@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: dbt_tri
+    database: chef-master-8f916
+    schema: dbt_tri
+    tables:
+      - name: level_upgrade_recommendations
+        description: >
+          Level upgrade recommendation designed by the game team.
+      - name: game_objects
+        description: >
+          Game objects data.

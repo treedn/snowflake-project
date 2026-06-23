@@ -1,0 +1,15 @@
+default:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      keyfile: C:\Users\P16s G3\Downloads\jobs\Upwork\Zero1\keys\chef-master-8f916-4809e0dd1003.json
+      project: chef-master-8f916
+      dataset: dbt_tri
+      location: EU
+      threads: 4
+      priority: interactive
+      # dbt Fusion / Cursor LSP use the Storage Read API for some result sets. If you still see dbt1308
+      # after model fixes, grant the keyfile service account on project chef-master-8f916:
+      #   IAM role: roles/bigquery.readSessionUser (BigQuery Read Session User)
