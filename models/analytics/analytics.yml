@@ -1,0 +1,82 @@
+version: 2
+
+models:
+  - name: retention_cohorts
+    description: >
+      Install-cohort retention + IAP value at
+      (cohort_date, geo_country, acquisition_source, app_version, spender_segment),
+      from Firebase stg_events. Cohort key = first `first_open`/`new_player` event
+      per user_pseudo_id; dims frozen at install. `retained_dN_users` = users who
+      fired any event exactly N days after install (compute rates as
+      retained_dN_users / cohort_size). `total_iap_value_usd` uses the shared
+      iap_value_usd() definition (IAP events only — the historic `amount`
+      inflation bug is fixed).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - cohort_date
+              - geo_country
+              - acquisition_source
+              - app_version
+              - spender_segment
+    columns:
+      - name: cohort_date
+        tests: [not_null]
+      - name: spender_segment
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['spender', 'non_spender']
+      - name: cohort_size
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
+      - name: total_iap_value_usd
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
+
+  - name: iap_ltv
+    description: >
+      IAP revenue attributed to the level a user was on at purchase time
+      (level inferred via forward/backward fill of level_id), at
+      (app_version, geo_country, product_id, event_date, level_id). Feeds
+      level-economy / monetisation-by-progression analysis. Croatia excluded.
+
+  - name: iap_overview
+    description: >
+      Per-event IAP buyer timeline: flags the purchase event, the buyer's
+      ordinal IAP index, and active-day index. Building block for spend-timing
+      and repeat-purchase analysis.
+
+  - name: fail_rate
+    description: >
+      Level difficulty signal: distinct users who started vs failed each level
+      at (app_version, geo_country, event_date, level_id). Croatia excluded.
+
+  - name: retention_abandonment_rate
+    description: >
+      Level-progression abandonment for `new_player` cohorts: users completing
+      each level vs the previous level, with a pool anchored at level 60000.
+
+  - name: boosters_usage
+    description: >
+      Booster usage events with level attribution (forward/backward filled
+      level_id) and an IAP-spender flag, joined to game_objects for booster
+      metadata. Used to study how paying vs free players consume boosters.
+
+  - name: max_level_active_day
+    description: >
+      Max level reached per user per active day — player progression speed.
+
+  - name: earned_spent_analysis
+    description: >
+      In-game currency earned vs spent by level / version — soft-currency
+      economy balance.

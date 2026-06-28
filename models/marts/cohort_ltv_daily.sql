@@ -104,11 +104,10 @@ iap_events_by_dsi as (
     c.app_version,
     date_diff(e.event_date, c.cohort_date, day) as days_since_install,
     c.user_pseudo_id,
-    coalesce(e.event_value_in_usd, e.price_dollars, 0) as event_value_usd
+    {{ iap_value_usd('e.event_value_in_usd', 'e.price_dollars') }} as event_value_usd
   from cohort_assignments c
   join {{ ref('stg_events') }} e using (user_pseudo_id)
-  where e.event_name in ('iap_purchase', 'in_app_purchase')
-    and coalesce(e.event_value_in_usd, e.price_dollars, 0) > 0
+  where {{ is_iap_revenue_event('e.event_name', 'e.event_value_in_usd', 'e.price_dollars') }}
     and date_diff(e.event_date, c.cohort_date, day) between 0 and {{ max_dsi }}
     {% if is_incremental() %}
     and e.event_date >= date_sub(current_date(), interval {{ max_dsi + lag_days }} day)

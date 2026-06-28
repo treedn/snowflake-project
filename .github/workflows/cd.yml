@@ -1,0 +1,53 @@
+name: CD (deploy to prod)
+
+# On merge to main, refresh production. Tags create a versioned release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  DBT_PROFILES_DIR: ${{ github.workspace }}
+  DBT_BIGQUERY_PROJECT: ${{ vars.DBT_BIGQUERY_PROJECT }}
+  DBT_BIGQUERY_DATASET: analytics
+  DBT_BIGQUERY_LOCATION: EU
+  DBT_PII_SALT: ${{ secrets.DBT_PII_SALT }}
+
+jobs:
+  deploy:
+    name: dbt build (prod)
+    runs-on: ubuntu-latest
+    environment: production   # requires the configured approval gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - run: pip install dbt-bigquery
+      - run: dbt deps
+
+      - name: Source freshness (non-blocking)
+        run: dbt source freshness --target prod || true
+
+      - name: Build + test production
+        run: dbt build --target prod
+
+      # Publish the manifest so the next PR's Slim CI can defer to it.
+      - name: Upload prod manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-manifest
+          path: target/manifest.json
+
+      - name: Generate docs
+        run: dbt docs generate --target prod

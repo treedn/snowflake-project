@@ -8,17 +8,68 @@ models:
       for paid spend joined to attributed installs/revenue/ROAS. Also exposes the IAP vs ad
       revenue split: `revenue` (= IAP), `ad_revenue`, `all_revenue` (sum), with `arpdau`
       (IAP), `arpdau_ad`, `arpdau_all` rates and `iap_share` / `ad_share` of total revenue.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - date
+              - app
+              - platform
+              - country
+              - network
+              - campaign
+              - campaign_id
     columns:
       - name: date
         tests: [not_null]
       - name: app
         tests: [not_null]
       - name: spend
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
       - name: installs
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
       - name: roas
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
       - name: arpdau
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
       - name: arpdau_ad
       - name: arpdau_all
+      - name: iap_share
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+              config:
+                severity: warn
+      - name: ad_share
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+              config:
+                severity: warn
 
   - name: engagement_daily
     description: >
@@ -26,29 +77,90 @@ models:
       clientVersion. Retention/session rates are DAU-weighted. DAU/payers are upper bounds
       because Unity returns one row per breakdown — re-pull without clientVersion to get
       exact totals.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date, country, platform]
     columns:
       - name: date
         tests: [not_null]
       - name: country
+        tests: [not_null]
       - name: platform
+        tests: [not_null]
+      - name: dau
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
+      - name: d1_retention
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+              config:
+                severity: warn
+      - name: d7_retention
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+              config:
+                severity: warn
+      - name: d30_retention
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+              config:
+                severity: warn
 
   - name: creative_performance_daily
     description: >
       Creative-level Meta ad performance: ad-grain spend, video metrics, attributed installs
       and purchases. Use ua_performance_daily for network-level paid spend totals.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date, account_id, campaign_id, adset_id, ad_id]
     columns:
       - name: date
         tests: [not_null]
       - name: ad_id
+        tests: [not_null]
+      - name: video_completion_rate
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+              config:
+                severity: warn
 
   - name: ua_funnel_daily
     description: >
       Acquisition funnel from Adjust: impressions → clicks → installs → revenue events →
       first purchase, plus stage-to-stage rates. In-game progression funnels are not
       derivable from these sources.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date, app, platform, country, network, campaign]
     columns:
       - name: date
         tests: [not_null]
+      - name: click_to_install_rate
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
 
   - name: iap_arpdau_daily
     description: >
@@ -60,13 +172,37 @@ models:
       intentionally excluded (carries non-IAP coin amounts). Ad revenue is NOT in
       this mart (Firebase ad events have no $ value); for ads use ua_performance_daily.
       Incremental: rebuilds last 14 days each run.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date, geo_country, app_version, spender_segment]
     columns:
       - name: date
         tests: [not_null]
       - name: geo_country
+        tests: [not_null]
       - name: app_version
+        tests: [not_null]
       - name: spender_segment
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['spender', 'non_spender']
       - name: dau
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
+      - name: iap_revenue
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
 
   - name: cohort_ltv_daily
     description: >
@@ -84,15 +220,38 @@ models:
       once the calendar day cohort_date + dsi has fully elapsed.
       Incremental: rebuilds cohort_date partitions in the last 44 days
       (max_dsi + 14d event-arrival buffer).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [cohort_date, days_since_install, geo_country, app_version]
     columns:
       - name: cohort_date
         tests: [not_null]
       - name: days_since_install
-        tests: [not_null]
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 30
       - name: geo_country
+        tests: [not_null]
       - name: app_version
+        tests: [not_null]
       - name: cohort_size
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
       - name: iap_revenue
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
       - name: iap_transactions
       - name: paying_users
 
@@ -107,13 +266,26 @@ models:
       sessions_per_user (distinct ga_session_id per user-day cell). Sessions
       are keyed on (user_pseudo_id, ga_session_id) and attributed to the date
       of their first event. Croatia excluded; incremental window 14 days.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date, platform, app_version, geo_country]
     columns:
       - name: date
         tests: [not_null]
       - name: platform
+        tests: [not_null]
       - name: app_version
+        tests: [not_null]
       - name: geo_country
+        tests: [not_null]
       - name: sessions
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
       - name: user_days
 
   - name: tutorial_funnel_daily
@@ -128,16 +300,35 @@ models:
       a tutorial_id). `users` is exact within a cell; summing across cells
       double-counts users who span cells (same caveat as engagement_daily.dau).
       Croatia excluded; incremental window 14 days.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - date
+              - app_version
+              - geo_country
+              - platform
+              - tutorial_id
+              - step_num
     columns:
       - name: date
         tests: [not_null]
       - name: app_version
+        tests: [not_null]
       - name: geo_country
+        tests: [not_null]
       - name: platform
+        tests: [not_null]
       - name: tutorial_id
         tests: [not_null]
       - name: step_num
       - name: users
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
       - name: events
 
   - name: overview_daily
@@ -145,6 +336,138 @@ models:
       Dashboard-friendly view joining ua_performance_daily and engagement_daily on
       (date, app, platform, country). Engagement does not carry network/campaign — query
       ua_performance_daily directly when those splits are needed.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date, app, platform, country]
+          config:
+            severity: warn
     columns:
       - name: date
         tests: [not_null]
+
+unit_tests:
+  - name: test_overview_daily_ua_and_engagement_match
+    description: >
+      When UA and engagement share date/platform/country, overview_daily should full-outer-join
+      both sides and compute ecpi, roas, arpdau, and arppu from rolled-up numerators.
+    model: overview_daily
+    given:
+      - input: ref('ua_performance_daily')
+        rows:
+          - {
+              date: "2026-01-01",
+              app: game1,
+              platform: ios,
+              country: US,
+              installs: 100,
+              paid_installs: 60,
+              organic_installs: 40,
+              spend: 200,
+              revenue: 50,
+              cohort_revenue: 400,
+              ad_revenue: 30,
+              impressions: 1000,
+              clicks: 200,
+            }
+      - input: ref('engagement_daily')
+        rows:
+          - {
+              date: "2026-01-01",
+              platform: ios,
+              country: US,
+              dau: 500,
+              new_users: 80,
+              payers: 25,
+              total_revenue: 100,
+              iap_revenue: 60,
+              sessions: 1200,
+              d1_retention: 0.4,
+              d7_retention: 0.2,
+              d30_retention: 0.1,
+            }
+    expect:
+      rows:
+        - {
+            date: "2026-01-01",
+            app: game1,
+            platform: ios,
+            country: US,
+            installs: 100,
+            paid_installs: 60,
+            organic_installs: 40,
+            impressions: 1000,
+            clicks: 200,
+            spend: 200,
+            adjust_revenue: 50,
+            cohort_revenue: 400,
+            adjust_ad_revenue: 30,
+            ecpi: 2,
+            roas: 2,
+            dau: 500,
+            new_users: 80,
+            payers: 25,
+            sessions: 1200,
+            engagement_total_revenue: 100,
+            engagement_iap_revenue: 60,
+            arpdau: 0.2,
+            arppu: 2.4,
+            d1_retention: 0.4,
+            d7_retention: 0.2,
+            d30_retention: 0.1,
+          }
+
+  - name: test_overview_daily_engagement_only_row
+    description: >
+      Engagement rows without a matching UA grain should still appear via the full outer join,
+      with UA metrics null and engagement metrics populated.
+    model: overview_daily
+    given:
+      - input: ref('ua_performance_daily')
+        rows: []
+      - input: ref('engagement_daily')
+        rows:
+          - {
+              date: "2026-01-02",
+              platform: android,
+              country: DE,
+              dau: 100,
+              new_users: 20,
+              payers: 5,
+              total_revenue: 40,
+              iap_revenue: 25,
+              sessions: 300,
+              d1_retention: 0.5,
+              d7_retention: 0.3,
+              d30_retention: 0.15,
+            }
+    expect:
+      rows:
+        - {
+            date: "2026-01-02",
+            app: null,
+            platform: android,
+            country: DE,
+            installs: null,
+            paid_installs: null,
+            organic_installs: null,
+            impressions: null,
+            clicks: null,
+            spend: null,
+            adjust_revenue: null,
+            cohort_revenue: null,
+            adjust_ad_revenue: null,
+            ecpi: null,
+            roas: null,
+            dau: 100,
+            new_users: 20,
+            payers: 5,
+            sessions: 300,
+            engagement_total_revenue: 40,
+            engagement_iap_revenue: 25,
+            arpdau: 0.4,
+            arppu: 5,
+            d1_retention: 0.5,
+            d7_retention: 0.3,
+            d30_retention: 0.15,
+          }

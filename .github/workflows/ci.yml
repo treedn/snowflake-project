@@ -1,0 +1,77 @@
+name: CI
+
+# Runs on every PR into main. Builds the project into an isolated, throwaway
+# BigQuery dataset so production is never touched by a pull request.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write   # required for keyless GCP auth (Workload Identity Federation)
+
+env:
+  DBT_PROFILES_DIR: ${{ github.workspace }}
+  # PR-scoped dataset, e.g. dbt_ci_pr_123 — dropped after the run.
+  DBT_BIGQUERY_DATASET: dbt_ci_pr_${{ github.event.pull_request.number }}
+  DBT_BIGQUERY_PROJECT: ${{ vars.DBT_BIGQUERY_PROJECT }}
+  DBT_BIGQUERY_LOCATION: EU
+  DBT_PII_SALT: ${{ secrets.DBT_PII_SALT }}
+
+jobs:
+  lint:
+    name: Lint (sqlfluff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install dbt-bigquery sqlfluff
+      - run: dbt deps
+      # Lint only the SQL changed in this PR (fast feedback).
+      - name: sqlfluff lint changed models
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}... -- 'models/**/*.sql' 'macros/**/*.sql' 'tests/**/*.sql' | tr '\n' ' ')
+          if [ -n "$CHANGED" ]; then sqlfluff lint $CHANGED; else echo "No SQL changed."; fi
+
+  build:
+    name: Build & test (isolated dataset)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      # Keyless auth — no JSON key ever exists in CI.
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - run: pip install dbt-bigquery
+      - run: dbt deps
+
+      - name: Compile (catch parse/ref errors fast)
+        run: dbt parse --target ci
+
+      # Slim CI: build only what changed (+ downstream), deferring unchanged
+      # refs to the production manifest. Falls back to a full build if no
+      # prod manifest artifact is available.
+      - name: Build & test changed models
+        run: |
+          dbt build --target ci \
+            --select state:modified+ --defer --state ./prod-manifest \
+            || dbt build --target ci
+
+      - name: Drop the PR dataset
+        if: always()
+        run: |
+          bq --location=$DBT_BIGQUERY_LOCATION rm -r -f -d \
+            "$DBT_BIGQUERY_PROJECT:$DBT_BIGQUERY_DATASET" || true

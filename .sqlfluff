@@ -1,0 +1,29 @@
+[sqlfluff]
+dialect = bigquery
+templater = dbt
+max_line_length = 120
+# Exploratory analytics models use a looser style than the production path;
+# lint them lightly. The marts/staging/macros are the enforced surface.
+exclude_rules = AM04, ST06, RF01, RF02, RF03, CP03, LT05
+
+[sqlfluff:indentation]
+indented_joins = false
+indented_using_on = true
+tab_space_size = 2
+
+[sqlfluff:templater:dbt]
+project_dir = .
+profiles_dir = .
+
+# Keywords / functions lowercase to match the production models.
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.types]
+extended_capitalisation_policy = lower

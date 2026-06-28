@@ -10,3 +10,12 @@ dbt_internal_packages/
 !package.json
 !package-lock.json
 !.vscode/extensions.json
+
+# Backups / local-only files that may contain paths or secrets
+*.bkp
+*.bak
+.env
+.env.*
+
+# Script outputs
+scripts/analytics_row_counts_result.json

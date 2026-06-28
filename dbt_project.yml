@@ -52,30 +52,32 @@ clean-targets: # directories to be removed by `dbt clean`
 
 models:
   zero_one_games:
-    # Archive layer: Archived data
-    archive:
-      +enabled: false
+    # Push model + column descriptions into BigQuery so the catalog, dbt docs,
+    # and the warehouse UI stay in sync (discoverability / governance).
+    +persist_docs:
+      relation: true
+      columns: true
 
-    # Analytics layer: Analytics models
+    # Access control as code. Uncomment and set real principals to provision
+    # read access via dbt instead of clicking in the console — permissions then
+    # live in version control and are reviewed in PRs.
+    # +grants:
+    #   data-reader: ["group:analysts@zero-one-games.com"]
+
+    # Analytics layer: player-behaviour exploration models
     # Materialized as views for efficiency
     analytics:
       +materialized: view
       +schema: analytics
-    
+
     # Staging layer: Lightweight transformations from source data
     # Materialized as views for efficiency
     staging:
       +materialized: view
       +schema: staging
 
-    # Intermediate layer: Reusable transformations and business logic
-    # Materialized as views for flexibility
-    intermediate:
-      +materialized: view
-      +schema: intermediate
-
-    # # Marts layer: Final business-ready datasets
-    # # Materialized as tables for performance
+    # Marts layer: Final business-ready datasets
+    # Materialized as incremental tables for performance
     marts:
       +materialized: table
       +schema: marts

@@ -36,8 +36,7 @@ with spender_lookup as (
   select
     user_pseudo_id,
     case when max(case
-      when event_name in ('iap_purchase', 'in_app_purchase')
-        and coalesce(event_value_in_usd, price_dollars, 0) > 0
+      when {{ is_iap_revenue_event() }}
       then 1 else 0 end) = 1
     then 'spender' else 'non_spender' end as spender_segment
   from {{ ref('stg_events') }}
@@ -73,18 +72,17 @@ select
   count(distinct user_pseudo_id)                                as dau,
 
   sum(case
-    when event_name in ('iap_purchase', 'in_app_purchase')
-    then coalesce(event_value_in_usd, price_dollars, 0)
+    when event_name in {{ iap_event_names() }}
+    then {{ iap_value_usd() }}
     else 0
   end)                                                          as iap_revenue,
 
-  countif(event_name in ('iap_purchase', 'in_app_purchase')
-    and coalesce(event_value_in_usd, price_dollars, 0) > 0)     as iap_transactions,
+  countif({{ is_iap_revenue_event() }})                         as iap_transactions,
 
   safe_divide(
     sum(case
-      when event_name in ('iap_purchase', 'in_app_purchase')
-      then coalesce(event_value_in_usd, price_dollars, 0)
+      when event_name in {{ iap_event_names() }}
+      then {{ iap_value_usd() }}
       else 0
     end),
     nullif(count(distinct user_pseudo_id), 0)

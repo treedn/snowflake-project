@@ -1,0 +1,12 @@
+# Default reviewers for the whole project.
+*                       @analytics-engineering
+
+# Marts and the semantic layer are the contract with BI — require an AE lead.
+/models/marts/          @analytics-engineering @ae-leads
+/models/semantic/       @analytics-engineering @ae-leads
+/models/exposures.yml   @analytics-engineering @ae-leads
+
+# Governance-sensitive surfaces.
+/macros/mask_pii.sql    @analytics-engineering @data-governance
+/docs/data_governance.md @analytics-engineering @data-governance
+/.github/               @analytics-engineering @platform

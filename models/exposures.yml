@@ -1,0 +1,74 @@
+version: 2
+
+# Exposures document the downstream BI surfaces that consume these marts. They
+# make the warehouse -> BI dependency explicit in the dbt DAG and docs, so
+# `dbt build -s +exposure:ua_performance_dashboard` rebuilds exactly what a
+# dashboard needs, and a breaking change shows up as an impacted exposure.
+
+exposures:
+  - name: ua_performance_dashboard
+    label: "UA Performance & ROAS"
+    type: dashboard
+    maturity: high
+    url: https://bi.zero-one-games.example/dashboards/ua-performance
+    description: >
+      Executive user-acquisition dashboard. Headline metric: D30 ROAS
+      (cohort_revenue / spend). Also surfaces spend, installs, eCPI, CTR/CVR,
+      ARPDAU and the acquisition funnel, sliced by network / campaign / geo /
+      platform. This is the primary decision surface for the UA budget.
+    depends_on:
+      - ref('overview_daily')
+      - ref('ua_performance_daily')
+      - ref('ua_funnel_daily')
+    owner:
+      name: Analytics Engineering
+      email: analytics@zero-one-games.example
+
+  - name: ltv_retention_dashboard
+    label: "LTV & Retention"
+    type: dashboard
+    maturity: high
+    url: https://bi.zero-one-games.example/dashboards/ltv-retention
+    description: >
+      Cohort LTV curves (D7/D14/D30) and retention by install cohort, geo and
+      app_version. Used to judge payback against eCPI/CAC and to compare the
+      monetisation quality of releases.
+    depends_on:
+      - ref('cohort_ltv_daily')
+      - ref('iap_arpdau_daily')
+      - ref('retention_cohorts')
+    owner:
+      name: Analytics Engineering
+      email: analytics@zero-one-games.example
+
+  - name: creative_performance_dashboard
+    label: "Creative Performance"
+    type: dashboard
+    maturity: medium
+    url: https://bi.zero-one-games.example/dashboards/creatives
+    description: >
+      Creative-level Meta performance: video completion, CTR, CVR, eCPI and
+      spend by ad. Used by the creative team to kill fatigued ads and scale
+      winners.
+    depends_on:
+      - ref('creative_performance_daily')
+    owner:
+      name: Performance Marketing
+      email: ua-team@zero-one-games.example
+
+  - name: product_engagement_dashboard
+    label: "Product Engagement & Funnels"
+    type: dashboard
+    maturity: medium
+    url: https://bi.zero-one-games.example/dashboards/engagement
+    description: >
+      Session depth, tutorial/FTUE completion and level difficulty for the
+      product team to find onboarding drop-off and difficulty spikes.
+    depends_on:
+      - ref('engagement_daily')
+      - ref('session_depth_daily')
+      - ref('tutorial_funnel_daily')
+      - ref('fail_rate')
+    owner:
+      name: Product Analytics
+      email: product-analytics@zero-one-games.example

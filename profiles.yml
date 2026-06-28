@@ -1,13 +1,47 @@
 default:
   target: dev
   outputs:
+    # ---------------------------------------------------------------------------
+    # Local / development.
+    # Secrets are read from environment variables (or a secret manager) — never
+    # hard-coded. `env_var('NAME', 'default')` keeps a dev fallback so a fresh
+    # clone still runs, while CI/prod inject the real values. See
+    # profiles.yml.example and docs/data_governance.md.
+    # ---------------------------------------------------------------------------
     dev:
       type: bigquery
       method: service-account
-      keyfile: C:\Users\P16s G3\Downloads\jobs\Upwork\Zero1\keys\chef-master-8f916-4809e0dd1003.json
-      project: chef-master-8f916
-      dataset: dbt_tri
-      location: EU
+      keyfile: "{{ env_var('DBT_GOOGLE_KEYFILE') }}"
+      project: "{{ env_var('DBT_BIGQUERY_PROJECT', 'chef-master-8f916') }}"
+      dataset: "{{ env_var('DBT_BIGQUERY_DATASET', 'dbt_tri') }}"
+      location: "{{ env_var('DBT_BIGQUERY_LOCATION', 'EU') }}"
       threads: 16
       priority: interactive
       dataproc_batch: null
+
+    # ---------------------------------------------------------------------------
+    # CI: keyless auth via Workload Identity Federation (OIDC) is preferred so no
+    # JSON key ever exists. Falls back to a key path if your CI injects one.
+    # ---------------------------------------------------------------------------
+    ci:
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('DBT_GOOGLE_KEYFILE') }}"
+      project: "{{ env_var('DBT_BIGQUERY_PROJECT', 'chef-master-8f916') }}"
+      dataset: "{{ env_var('DBT_BIGQUERY_DATASET', 'dbt_ci') }}"
+      location: "{{ env_var('DBT_BIGQUERY_LOCATION', 'EU') }}"
+      threads: 16
+      priority: interactive
+
+    # ---------------------------------------------------------------------------
+    # Production deploy target.
+    # ---------------------------------------------------------------------------
+    prod:
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('DBT_GOOGLE_KEYFILE') }}"
+      project: "{{ env_var('DBT_BIGQUERY_PROJECT', 'chef-master-8f916') }}"
+      dataset: "{{ env_var('DBT_BIGQUERY_DATASET', 'analytics') }}"
+      location: "{{ env_var('DBT_BIGQUERY_LOCATION', 'EU') }}"
+      threads: 16
+      priority: interactive

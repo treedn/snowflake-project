@@ -39,20 +39,23 @@ user_activity as (
 ),
 
 user_iap_value as (
+  -- IAP value is summed ONLY over real IAP events, using the shared
+  -- iap_value_usd() definition. Previously this summed
+  -- coalesce(event_value_in_usd, amount, price_dollars, 0) across ALL events,
+  -- which pulled the generic `amount` coin param off currency_earned/spent
+  -- events and inflated total_iap_value_usd by orders of magnitude. Now aligned
+  -- with iap_arpdau_daily / cohort_ltv_daily.
   select
     user_pseudo_id,
     case
-      when max(
-        case
-          when event_name in ('iap_purchase', 'in_app_purchase')
-            and coalesce(event_value_in_usd, amount, price_dollars, 0) > 0
-            then 1
-          else 0
-        end
-      ) = 1 then 'spender'
+      when max(case when {{ is_iap_revenue_event() }} then 1 else 0 end) = 1
+        then 'spender'
       else 'non_spender'
     end as spender_segment,
-    sum(coalesce(event_value_in_usd, amount, price_dollars, 0)) as total_iap_value_usd
+    sum(case
+      when event_name in {{ iap_event_names() }} then {{ iap_value_usd() }}
+      else 0
+    end) as total_iap_value_usd
   from {{ ref('stg_events') }}
   where user_pseudo_id is not null
   group by 1
