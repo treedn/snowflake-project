@@ -4,7 +4,9 @@ default:
     dev:
       type: bigquery
       method: service-account
-      keyfile: C:\Users\P16s G3\Downloads\jobs\Upwork\Zero1\keys\chef-master-8f916-4809e0dd1003.json
+      # Path to the BigQuery service-account JSON key. Set the DBT_BIGQUERY_KEYFILE env var
+      # to point at your key (the default below is a convenient repo-local location).
+      keyfile: "{{ env_var('DBT_BIGQUERY_KEYFILE', '/workspace/.secrets/bigquery-keyfile.json') }}"
       project: chef-master-8f916
       dataset: dbt_tri
       location: EU
