@@ -5,6 +5,12 @@ dbt_packages/
 logs/
 dbt_internal_packages/
 
+# Python virtual environment used for the dbt toolchain
+.venv/
+
+# Local secrets (e.g. BigQuery service-account key)
+.secrets/
+
 # Service account keys (sensitive credentials)
 *.json
 !package.json
